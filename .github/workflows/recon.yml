@@ -1,0 +1,172 @@
+name: Recon Tool Selector
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        type: choice
+        description: 'Select the tool to run'
+        required: true
+        options:
+          - subfinder
+          - httpx
+          - waybackurls
+          - nuclei
+      domain:
+        description: 'Target domain to scan (used if no input_list provided)'
+        required: false
+        default: 'example.com'
+      input_list:
+        description: 'Paste the content of your domains/subdomains file here (multiline, each on a new line). This will be used as input file.'
+        required: false
+        type: string  # Multiline supported in GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  run-selected-tool:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install tools
+        run: |
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install github.com/tomnomnom/waybackurls@latest
+          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+
+      - name: Prepare input file if provided
+        if: github.event.inputs.input_list != ''
+        run: |
+          echo "${{ github.event.inputs.input_list }}" > input-domains.txt
+          echo "Input list provided, saved to input-domains.txt"
+
+      - name: Run subfinder
+        if: github.event.inputs.tool == 'subfinder'
+        run: |
+          mkdir subfinder-workspace
+          cd subfinder-workspace
+          if [ -f ../input-domains.txt ]; then
+            cp ../input-domains.txt domains.txt
+            subfinder -dL domains.txt -silent -o subdomains.txt
+            SOURCE="input file"
+          else
+            subfinder -d "${{ github.event.inputs.domain }}" -silent -o subdomains.txt
+            SOURCE="single domain"
+          fi
+          SUBDOMAINS_COUNT=$(wc -l < subdomains.txt)
+          echo "Found $SUBDOMAINS_COUNT subdomains from $SOURCE"
+          mv subdomains.txt ..
+          cd ..
+          rm -rf subfinder-workspace
+
+      - name: Run httpx
+        if: github.event.inputs.tool == 'httpx'
+        run: |
+          if [ -f input-domains.txt ]; then
+            INPUT_FILE=input-domains.txt
+          elif [ -f subdomains.txt ]; then
+            INPUT_FILE=subdomains.txt
+          else
+            echo "No input file or subdomains.txt found! Provide input_list or run subfinder first."
+            exit 1
+          fi
+          mkdir httpx-workspace
+          cd httpx-workspace
+          cp ../$INPUT_FILE .
+          httpx -l $INPUT_FILE -silent -o live-hosts.txt
+          LIVE_COUNT=$(wc -l < live-hosts.txt)
+          echo "Found $LIVE_COUNT live hosts"
+          mv live-hosts.txt ..
+          cd ..
+          rm -rf httpx-workspace
+
+      - name: Run waybackurls
+        if: github.event.inputs.tool == 'waybackurls'
+        run: |
+          if [ -f input-domains.txt ]; then
+            INPUT_FILE=input-domains.txt
+          elif [ -f live-hosts.txt ]; then
+            INPUT_FILE=live-hosts.txt
+          else
+            echo "No input file or live-hosts.txt found! Provide input_list or run httpx first."
+            exit 1
+          fi
+          mkdir waybackurls-workspace
+          cd waybackurls-workspace
+          cp ../$INPUT_FILE .
+          cat $INPUT_FILE | waybackurls > archived-urls.txt
+          ARCHIVED_COUNT=$(wc -l < archived-urls.txt)
+          echo "Found $ARCHIVED_COUNT archived URLs"
+          mv archived-urls.txt ..
+          cd ..
+          rm -rf waybackurls-workspace
+
+      - name: Run nuclei
+        if: github.event.inputs.tool == 'nuclei'
+        run: |
+          if [ -f input-domains.txt ]; then
+            INPUT_FILE=input-domains.txt
+          elif [ -f live-hosts.txt ]; then
+            INPUT_FILE=live-hosts.txt
+          else
+            echo "No input file or live-hosts.txt found! Provide input_list or run httpx first."
+            exit 1
+          fi
+          mkdir nuclei-workspace
+          cd nuclei-workspace
+          cp ../$INPUT_FILE .
+          nuclei -update-templates  # Update and load all templates
+          nuclei -l $INPUT_FILE -silent -o vulnerabilities.txt
+          VULNS_COUNT=$(wc -l < vulnerabilities.txt)
+          echo "Scan completed, found $VULNS_COUNT potential vulnerabilities"
+          mv vulnerabilities.txt ..
+          cd ..
+          rm -rf nuclei-workspace
+
+      - name: Commit results
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add *.txt || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update results from ${{ github.event.inputs.tool }} for ${{ github.event.inputs.domain }} or input list"
+            git push origin main
+          fi
+
+      - name: Send Telegram notification
+        env:
+          BOT_TOKEN: ${{ secrets.8315191756:AAGzGPAMkPhnMKG7LqdFe1sQ6U9gKcY87DE }}
+          CHAT_ID: ${{ secrets.1204862834 }}
+          DOMAIN: ${{ github.event.inputs.domain }}
+          TOOL: ${{ github.event.inputs.tool }}
+        run: |
+          if [ "${{ github.event.inputs.tool }}" == "subfinder" ]; then
+            MESSAGE="Subfinder completed for $DOMAIN or input list: Found $SUBDOMAINS_COUNT subdomains from $SOURCE."
+          elif [ "${{ github.event.inputs.tool }}" == "httpx" ]; then
+            MESSAGE="Httpx completed: Found $LIVE_COUNT live hosts."
+          elif [ "${{ github.event.inputs.tool }}" == "waybackurls" ]; then
+            MESSAGE="Waybackurls completed: Found $ARCHIVED_COUNT archived URLs."
+          elif [ "${{ github.event.inputs.tool }}" == "nuclei" ]; then
+            MESSAGE="Nuclei completed: Found $VULNS_COUNT potential vulnerabilities."
+          fi
+          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            -d text="$MESSAGE" \
+            -d parse_mode="Markdown"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f *.txt || true
