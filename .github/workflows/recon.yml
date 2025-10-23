@@ -84,6 +84,12 @@ jobs:
             echo "securitytrails:" >> $CONFIG_FILE
             echo "  - ${{ secrets.SECURITYTRAILS_API_KEY }}" >> $CONFIG_FILE
           fi
+
+          # Add Shodan key if provided
+          if [ -n "${{ secrets.SHODAN_API_KEY }}" ]; then
+            echo "shodan:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.SHODAN_API_KEY }}" >> $CONFIG_FILE
+          fi
           
           # Add empty lists for other providers to match default
           echo "alienvault: []" >> $CONFIG_FILE
