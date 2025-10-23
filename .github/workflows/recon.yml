@@ -55,6 +55,44 @@ jobs:
           go install github.com/tomnomnom/waybackurls@latest
           go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 
+      - name: Create subfinder config with secrets
+        run: |
+          mkdir -p ~/.config/subfinder
+          CONFIG_FILE=~/.config/subfinder/provider-config.yaml
+          echo "# Subfinder provider config with API keys" > $CONFIG_FILE
+          
+          # Add VirusTotal key if provided
+          if [ -n "${{ secrets.VIRUSTOTAL_API_KEY }}" ]; then
+            echo "virustotal:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.VIRUSTOTAL_API_KEY }}" >> $CONFIG_FILE
+          fi
+          
+          # Add GitHub token if provided
+          if [ -n "${{ secrets.GITHUB_API_KEY }}" ]; then
+            echo "github:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.GITHUB_API_KEY }}" >> $CONFIG_FILE
+          fi
+
+           # Add dnsdumpster if provided
+          if [ -n "${{ secrets.DSNDUMPSTER_API_KEY }}" ]; then
+            echo "dnsdumpster:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.DSNDUMPSTER_API_KEY }}" >> $CONFIG_FILE
+          fi
+
+           # Add securitytrails token if provided
+          if [ -n "${{ secrets.SECURITYTRAILS_API_KEY }}" ]; then
+            echo "securitytrails:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.SECURITYTRAILS_API_KEY }}" >> $CONFIG_FILE
+          fi
+          
+          # Add empty lists for other providers to match default
+          echo "alienvault: []" >> $CONFIG_FILE
+          echo "bevigil: []" >> $CONFIG_FILE
+          # ... add the rest if you want full default, or subfinder will handle missing ones
+          
+          echo "Config file created at $CONFIG_FILE"
+
+
       - name: Prepare input file if provided
         if: github.event.inputs.input_list != ''
         run: |
