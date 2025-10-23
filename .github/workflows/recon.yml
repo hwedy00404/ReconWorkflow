@@ -148,8 +148,8 @@ jobs:
 
       - name: Send Telegram notification
         env:
-          BOT_TOKEN: ${{ secrets.8315191756:AAGzGPAMkPhnMKG7LqdFe1sQ6U9gKcY87DE }}
-          CHAT_ID: ${{ secrets.1204862834 }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DOMAIN: ${{ github.event.inputs.domain }}
           TOOL: ${{ github.event.inputs.tool }}
         run: |
