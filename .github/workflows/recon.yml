@@ -68,9 +68,9 @@ jobs:
           fi
           
           # Add GitHub token if provided
-          if [ -n "${{ secrets.GITHUB_API_KEY }}" ]; then
+          if [ -n "${{ secrets.API_KEY_GITHUB }}" ]; then
             echo "github:" >> $CONFIG_FILE
-            echo "  - ${{ secrets.GITHUB_API_KEY }}" >> $CONFIG_FILE
+            echo "  - ${{ secrets.API_KEY_GITHUB }}" >> $CONFIG_FILE
           fi
 
            # Add dnsdumpster if provided
