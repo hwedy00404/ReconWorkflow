@@ -73,13 +73,13 @@ jobs:
             echo "  - ${{ secrets.API_KEY_GITHUB }}" >> $CONFIG_FILE
           fi
 
-           # Add dnsdumpster if provided
+          # Add dnsdumpster if provided
           if [ -n "${{ secrets.DSNDUMPSTER_API_KEY }}" ]; then
             echo "dnsdumpster:" >> $CONFIG_FILE
             echo "  - ${{ secrets.DSNDUMPSTER_API_KEY }}" >> $CONFIG_FILE
           fi
 
-           # Add securitytrails token if provided
+          # Add securitytrails token if provided
           if [ -n "${{ secrets.SECURITYTRAILS_API_KEY }}" ]; then
             echo "securitytrails:" >> $CONFIG_FILE
             echo "  - ${{ secrets.SECURITYTRAILS_API_KEY }}" >> $CONFIG_FILE
@@ -98,15 +98,14 @@ jobs:
           
           echo "Config file created at $CONFIG_FILE"
 
-
       - name: Prepare input file if provided
-        if: github.event.inputs.input_list != ''
+        if: inputs.input_list != ''
         run: |
-          echo "${{ github.event.inputs.input_list }}" > input-domains.txt
+          echo "${{ inputs.input_list }}" > input-domains.txt  # أضفت اقتباسات لحفظ السطور الجديدة
           echo "Input list provided, saved to input-domains.txt"
 
       - name: Run subfinder
-        if: github.event.inputs.tool == 'subfinder'
+        if: inputs.tool == 'subfinder'
         run: |
           mkdir subfinder-workspace
           cd subfinder-workspace
@@ -115,17 +114,18 @@ jobs:
             subfinder -dL domains.txt -silent -o subdomains.txt
             SOURCE="input file"
           else
-            subfinder -d "${{ github.event.inputs.domain }}" -silent -o subdomains.txt
+            subfinder -d "${{ inputs.domain }}" -silent -o subdomains.txt
             SOURCE="single domain"
           fi
           SUBDOMAINS_COUNT=$(wc -l < subdomains.txt)
           echo "Found $SUBDOMAINS_COUNT subdomains from $SOURCE"
+          echo "MESSAGE=Subfinder completed for ${{ inputs.domain }} or input list: Found $SUBDOMAINS_COUNT subdomains from $SOURCE." >> $GITHUB_ENV  # حفظ الرسالة للتليجرام
           mv subdomains.txt ..
           cd ..
           rm -rf subfinder-workspace
 
       - name: Run httpx
-        if: github.event.inputs.tool == 'httpx'
+        if: inputs.tool == 'httpx'
         run: |
           if [ -f input-domains.txt ]; then
             INPUT_FILE=input-domains.txt
@@ -141,12 +141,13 @@ jobs:
           httpx -l $INPUT_FILE -silent -o live-hosts.txt
           LIVE_COUNT=$(wc -l < live-hosts.txt)
           echo "Found $LIVE_COUNT live hosts"
+          echo "MESSAGE=Httpx completed: Found $LIVE_COUNT live hosts." >> $GITHUB_ENV  # حفظ الرسالة
           mv live-hosts.txt ..
           cd ..
           rm -rf httpx-workspace
 
       - name: Run waybackurls
-        if: github.event.inputs.tool == 'waybackurls'
+        if: inputs.tool == 'waybackurls'
         run: |
           if [ -f input-domains.txt ]; then
             INPUT_FILE=input-domains.txt
@@ -162,12 +163,13 @@ jobs:
           cat $INPUT_FILE | waybackurls > archived-urls.txt
           ARCHIVED_COUNT=$(wc -l < archived-urls.txt)
           echo "Found $ARCHIVED_COUNT archived URLs"
+          echo "MESSAGE=Waybackurls completed: Found $ARCHIVED_COUNT archived URLs." >> $GITHUB_ENV  # حفظ الرسالة
           mv archived-urls.txt ..
           cd ..
           rm -rf waybackurls-workspace
 
       - name: Run nuclei
-        if: github.event.inputs.tool == 'nuclei'
+        if: inputs.tool == 'nuclei'
         run: |
           if [ -f input-domains.txt ]; then
             INPUT_FILE=input-domains.txt
@@ -184,6 +186,7 @@ jobs:
           nuclei -l $INPUT_FILE -silent -o vulnerabilities.txt
           VULNS_COUNT=$(wc -l < vulnerabilities.txt)
           echo "Scan completed, found $VULNS_COUNT potential vulnerabilities"
+          echo "MESSAGE=Nuclei completed: Found $VULNS_COUNT potential vulnerabilities." >> $GITHUB_ENV  # حفظ الرسالة
           mv vulnerabilities.txt ..
           cd ..
           rm -rf nuclei-workspace
@@ -196,7 +199,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update results from ${{ github.event.inputs.tool }} for ${{ github.event.inputs.domain }} or input list"
+            git commit -m "Update results from ${{ inputs.tool }} for ${{ inputs.domain }} or input list"
             git push origin main
           fi
 
@@ -204,21 +207,10 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DOMAIN: ${{ github.event.inputs.domain }}
-          TOOL: ${{ github.event.inputs.tool }}
         run: |
-          if [ "${{ github.event.inputs.tool }}" == "subfinder" ]; then
-            MESSAGE="Subfinder completed for $DOMAIN or input list: Found $SUBDOMAINS_COUNT subdomains from $SOURCE."
-          elif [ "${{ github.event.inputs.tool }}" == "httpx" ]; then
-            MESSAGE="Httpx completed: Found $LIVE_COUNT live hosts."
-          elif [ "${{ github.event.inputs.tool }}" == "waybackurls" ]; then
-            MESSAGE="Waybackurls completed: Found $ARCHIVED_COUNT archived URLs."
-          elif [ "${{ github.event.inputs.tool }}" == "nuclei" ]; then
-            MESSAGE="Nuclei completed: Found $VULNS_COUNT potential vulnerabilities."
-          fi
           curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
             -d chat_id="$CHAT_ID" \
-            -d text="$MESSAGE" \
+            -d text="$MESSAGE"  # استخدام الرسالة المحفوظة من الخطوة السابقة
             -d parse_mode="Markdown"
 
       - name: Cleanup
