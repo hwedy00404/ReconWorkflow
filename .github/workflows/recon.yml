@@ -54,10 +54,7 @@ jobs:
 
       - name: Install tools
         run: |
-          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
           go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
-          go install github.com/tomnomnom/waybackurls@latest
-          go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 
       - name: Create subfinder config with secrets
         run: |
