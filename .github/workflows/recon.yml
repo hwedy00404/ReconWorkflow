@@ -19,7 +19,11 @@ on:
       input_list:
         description: 'Paste the content of your domains/subdomains file here (multiline, each on a new line). This will be used as input file.'
         required: false
-        type: string  # Multiline supported in GitHub UI
+        type: string
+      input_file_path:
+        description: 'Path to uploaded file in repo (e.g., inputs/domains.txt). Leave empty if using input_list or domain.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -39,8 +43,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-            ~/go/bin  # Cache installed binaries like subfinder
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.mod', '**/go.sum') }}  # غيرتها لتكون أفضل
+            ~/go/bin
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.mod', '**/go.sum') }}
           restore-keys: ${{ runner.os }}-go-
 
       - name: Set up Go
@@ -61,54 +65,62 @@ jobs:
           CONFIG_FILE=~/.config/subfinder/provider-config.yaml
           echo "# Subfinder provider config with API keys" > $CONFIG_FILE
           
-          # Add VirusTotal key if provided
           if [ -n "${{ secrets.VIRUSTOTAL_API_KEY }}" ]; then
             echo "virustotal:" >> $CONFIG_FILE
             echo "  - ${{ secrets.VIRUSTOTAL_API_KEY }}" >> $CONFIG_FILE
           fi
           
-          # Add GitHub token if provided
           if [ -n "${{ secrets.API_KEY_GITHUB }}" ]; then
             echo "github:" >> $CONFIG_FILE
             echo "  - ${{ secrets.API_KEY_GITHUB }}" >> $CONFIG_FILE
           fi
 
-          # Add dnsdumpster if provided
           if [ -n "${{ secrets.DSNDUMPSTER_API_KEY }}" ]; then
             echo "dnsdumpster:" >> $CONFIG_FILE
             echo "  - ${{ secrets.DSNDUMPSTER_API_KEY }}" >> $CONFIG_FILE
           fi
 
-          # Add securitytrails token if provided
           if [ -n "${{ secrets.SECURITYTRAILS_API_KEY }}" ]; then
             echo "securitytrails:" >> $CONFIG_FILE
             echo "  - ${{ secrets.SECURITYTRAILS_API_KEY }}" >> $CONFIG_FILE
           fi
 
-          # Add Shodan key if provided
           if [ -n "${{ secrets.SHODAN_API_KEY }}" ]; then
             echo "shodan:" >> $CONFIG_FILE
             echo "  - ${{ secrets.SHODAN_API_KEY }}" >> $CONFIG_FILE
           fi
           
-          # Add empty lists for other providers to match default
           echo "alienvault: []" >> $CONFIG_FILE
           echo "bevigil: []" >> $CONFIG_FILE
-          # ... add the rest if you want full default, or subfinder will handle missing ones
           
           echo "Config file created at $CONFIG_FILE"
 
-      - name: Prepare input file if provided
-        if: inputs.input_list != ''
+      - name: Prepare input file
         run: |
-          echo "${{ inputs.input_list }}" > input-domains.txt
-          echo "Input list provided, saved to input-domains.txt"
+          # Priority: 1. Uploaded file, 2. Pasted content, 3. Single domain
+          if [ -n "${{ inputs.input_file_path }}" ] && [ -f "${{ inputs.input_file_path }}" ]; then
+            cp "${{ inputs.input_file_path }}" input-domains.txt
+            echo "✅ Using uploaded file: ${{ inputs.input_file_path }}"
+            INPUT_SOURCE="uploaded file"
+          elif [ -n "${{ inputs.input_list }}" ]; then
+            echo "${{ inputs.input_list }}" > input-domains.txt
+            echo "✅ Using pasted input list"
+            INPUT_SOURCE="pasted list"
+          else
+            echo "✅ No file or list provided, will use single domain: ${{ inputs.domain }}"
+            INPUT_SOURCE="single domain"
+          fi
+          echo "INPUT_SOURCE=$INPUT_SOURCE" >> $GITHUB_ENV
 
-      - name: Debug input file content  # أضفتها للديباج
-        if: inputs.input_list != ''
+      - name: Debug input file content
+        if: inputs.input_file_path != '' || inputs.input_list != ''
         run: |
-          cat input-domains.txt
-          wc -l input-domains.txt
+          if [ -f input-domains.txt ]; then
+            echo "📄 Content of input-domains.txt:"
+            cat input-domains.txt
+            echo ""
+            echo "📊 Total lines: $(wc -l < input-domains.txt)"
+          fi
 
       - name: Run subfinder
         if: inputs.tool == 'subfinder'
@@ -118,14 +130,12 @@ jobs:
           if [ -f ../input-domains.txt ]; then
             cp ../input-domains.txt domains.txt
             subfinder -dL domains.txt -silent -o subdomains.txt
-            SOURCE="input file"
           else
             subfinder -d "${{ inputs.domain }}" -silent -o subdomains.txt
-            SOURCE="single domain"
           fi
           SUBDOMAINS_COUNT=$(wc -l < subdomains.txt)
-          echo "Found $SUBDOMAINS_COUNT subdomains from $SOURCE"
-          echo "MESSAGE=Subfinder completed for ${{ inputs.domain }} or input list: Found $SUBDOMAINS_COUNT subdomains from $SOURCE." >> $GITHUB_ENV
+          echo "Found $SUBDOMAINS_COUNT subdomains from $INPUT_SOURCE"
+          echo "MESSAGE=✅ Subfinder completed from $INPUT_SOURCE: Found $SUBDOMAINS_COUNT subdomains." >> $GITHUB_ENV
           mv subdomains.txt ..
           cd ..
           rm -rf subfinder-workspace
@@ -138,7 +148,7 @@ jobs:
           elif [ -f subdomains.txt ]; then
             INPUT_FILE=subdomains.txt
           else
-            echo "No input file or subdomains.txt found! Provide input_list or run subfinder first."
+            echo "❌ No input file or subdomains.txt found! Provide input_list or run subfinder first."
             exit 1
           fi
           mkdir httpx-workspace
@@ -147,7 +157,7 @@ jobs:
           httpx -l $INPUT_FILE -silent -o live-hosts.txt
           LIVE_COUNT=$(wc -l < live-hosts.txt)
           echo "Found $LIVE_COUNT live hosts"
-          echo "MESSAGE=Httpx completed: Found $LIVE_COUNT live hosts." >> $GITHUB_ENV
+          echo "MESSAGE=✅ Httpx completed from $INPUT_SOURCE: Found $LIVE_COUNT live hosts." >> $GITHUB_ENV
           mv live-hosts.txt ..
           cd ..
           rm -rf httpx-workspace
@@ -160,7 +170,7 @@ jobs:
           elif [ -f live-hosts.txt ]; then
             INPUT_FILE=live-hosts.txt
           else
-            echo "No input file or live-hosts.txt found! Provide input_list or run httpx first."
+            echo "❌ No input file or live-hosts.txt found! Provide input_list or run httpx first."
             exit 1
           fi
           mkdir waybackurls-workspace
@@ -169,7 +179,7 @@ jobs:
           cat $INPUT_FILE | waybackurls > archived-urls.txt
           ARCHIVED_COUNT=$(wc -l < archived-urls.txt)
           echo "Found $ARCHIVED_COUNT archived URLs"
-          echo "MESSAGE=Waybackurls completed: Found $ARCHIVED_COUNT archived URLs." >> $GITHUB_ENV
+          echo "MESSAGE=✅ Waybackurls completed from $INPUT_SOURCE: Found $ARCHIVED_COUNT archived URLs." >> $GITHUB_ENV
           mv archived-urls.txt ..
           cd ..
           rm -rf waybackurls-workspace
@@ -182,17 +192,17 @@ jobs:
           elif [ -f live-hosts.txt ]; then
             INPUT_FILE=live-hosts.txt
           else
-            echo "No input file or live-hosts.txt found! Provide input_list or run httpx first."
+            echo "❌ No input file or live-hosts.txt found! Provide input_list or run httpx first."
             exit 1
           fi
           mkdir nuclei-workspace
           cd nuclei-workspace
           cp ../$INPUT_FILE .
-          nuclei -update-templates  # Update and load all templates
+          nuclei -update-templates
           nuclei -l $INPUT_FILE -silent -o vulnerabilities.txt
           VULNS_COUNT=$(wc -l < vulnerabilities.txt)
           echo "Scan completed, found $VULNS_COUNT potential vulnerabilities"
-          echo "MESSAGE=Nuclei completed: Found $VULNS_COUNT potential vulnerabilities." >> $GITHUB_ENV
+          echo "MESSAGE=✅ Nuclei completed from $INPUT_SOURCE: Found $VULNS_COUNT potential vulnerabilities." >> $GITHUB_ENV
           mv vulnerabilities.txt ..
           cd ..
           rm -rf nuclei-workspace
@@ -205,7 +215,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update results from ${{ inputs.tool }} for ${{ inputs.domain }} or input list"
+            git commit -m "Update results from ${{ inputs.tool }} - Source: $INPUT_SOURCE"
             git push origin main
           fi
 
