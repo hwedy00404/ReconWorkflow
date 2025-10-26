@@ -127,7 +127,7 @@ jobs:
           cd subfinder-workspace
           if [ -f ../input-domains.txt ]; then
             cp ../input-domains.txt domains.txt
-            subfinder -dL domains.txt -silent -o subdomains.txt
+            subfinder -dL domains.txt -silent -t 100 -o subdomains.txt
           else
             subfinder -d "${{ inputs.domain }}" -silent -o subdomains.txt
           fi
