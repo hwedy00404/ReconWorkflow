@@ -55,6 +55,7 @@ jobs:
       - name: Install tools
         run: |
           go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 
       - name: Create subfinder config with secrets
         run: |
