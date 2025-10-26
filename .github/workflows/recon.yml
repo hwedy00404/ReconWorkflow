@@ -108,7 +108,16 @@ jobs:
             INPUT_SOURCE="single domain"
           fi
           echo "INPUT_SOURCE=$INPUT_SOURCE" >> $GITHUB_ENV
-          
+
+      - name: Debug input file content
+        if: inputs.input_file_path != '' || inputs.input_list != ''
+        run: |
+          if [ -f input-domains.txt ]; then
+            echo "📄 Content of input-domains.txt:"
+            cat input-domains.txt
+            echo ""
+            echo "📊 Total lines: $(wc -l < input-domains.txt)"
+          fi
 
       - name: Run subfinder
         if: inputs.tool == 'subfinder'
@@ -142,7 +151,7 @@ jobs:
           mkdir httpx-workspace
           cd httpx-workspace
           cp ../$INPUT_FILE .
-          httpx -l $INPUT_FILE -silent -t 150 -o live-hosts.txt
+          httpx -l $INPUT_FILE -silent -o live-hosts.txt
           LIVE_COUNT=$(wc -l < live-hosts.txt)
           echo "Found $LIVE_COUNT live hosts"
           echo "MESSAGE=✅ Httpx completed from $INPUT_SOURCE: Found $LIVE_COUNT live hosts." >> $GITHUB_ENV
