@@ -108,16 +108,7 @@ jobs:
             INPUT_SOURCE="single domain"
           fi
           echo "INPUT_SOURCE=$INPUT_SOURCE" >> $GITHUB_ENV
-
-      - name: Debug input file content
-        if: inputs.input_file_path != '' || inputs.input_list != ''
-        run: |
-          if [ -f input-domains.txt ]; then
-            echo "📄 Content of input-domains.txt:"
-            cat input-domains.txt
-            echo ""
-            echo "📊 Total lines: $(wc -l < input-domains.txt)"
-          fi
+          
 
       - name: Run subfinder
         if: inputs.tool == 'subfinder'
