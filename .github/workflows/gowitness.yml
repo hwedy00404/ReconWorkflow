@@ -59,11 +59,7 @@ jobs:
           
           # تشغيل Gowitness
           gowitness scan file \
-            -f "${{ github.event.inputs.urls_file || 'urls.txt' }}" \
-            --screenshot-path screenshots \
-            --threads ${{ github.event.inputs.threads || '10' }} \
-            --delay ${{ github.event.inputs.delay || '3' }} \
-            --timeout ${{ github.event.inputs.timeout || '30' }}
+            -f "${{ github.event.inputs.urls_file || 'urls.txt' }}"
           
           echo "✅ تم الانتهاء من التصوير"
           echo "📊 عدد الصور:"
