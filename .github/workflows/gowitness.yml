@@ -1,0 +1,100 @@
+name: 📸 Bulk Gowitness Screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls_file:
+        description: 'اسم ملف الـ URLs (مثال: urls.txt)'
+        required: true
+        default: 'urls.txt'
+        type: string
+      threads:
+        description: 'عدد الـ threads (1-20)'
+        required: false
+        default: '10'
+        type: string
+      delay:
+        description: 'وقت التأخير بالثواني'
+        required: false
+        default: '3'
+        type: string
+      timeout:
+        description: 'مهلة الانتظار بالثواني'
+        required: false
+        default: '30'
+        type: string
+
+jobs:
+  screenshot_job:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📦 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🛠️ Setup Go Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      
+      - name: ⬇️ Install Gowitness
+        run: go install github.com/sensepost/gowitness@latest
+      
+      - name: ✅ Verify URLs File
+        run: |
+          if [ ! -f "${{ github.event.inputs.urls_file || 'urls.txt' }}" ]; then
+            echo "❌ الملف ${{ github.event.inputs.urls_file || 'urls.txt' }} مش موجود!"
+            exit 1
+          fi
+          echo "✅ تم العثور على الملف"
+          echo "📊 عدد الـ URLs:"
+          wc -l < "${{ github.event.inputs.urls_file || 'urls.txt' }}"
+      
+      - name: 🏃 Run Gowitness Scan
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          
+          # إنشاء مجلد للصور
+          mkdir -p screenshots
+          
+          # تشغيل Gowitness
+          gowitness scan file \
+            -f "${{ github.event.inputs.urls_file || 'urls.txt' }}" \
+            --screenshot-path screenshots \
+            --threads ${{ github.event.inputs.threads || '10' }} \
+            --delay ${{ github.event.inputs.delay || '3' }} \
+            --timeout ${{ github.event.inputs.timeout || '30' }} \
+            --format png
+          
+          echo "✅ تم الانتهاء من التصوير"
+          echo "📊 عدد الصور:"
+          ls -1 screenshots/*.png 2>/dev/null | wc -l || echo "0"
+      
+      - name: 📋 Generate Summary Report
+        run: |
+          echo "# 📸 نتائج المسح" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**الملف المستخدم:** \`${{ github.event.inputs.urls_file || 'urls.txt' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**عدد الـ URLs:** $(wc -l < ${{ github.event.inputs.urls_file || 'urls.txt' }})" >> $GITHUB_STEP_SUMMARY
+          echo "**عدد الصور:** $(ls -1 screenshots/*.png 2>/dev/null | wc -l || echo 0)" >> $GITHUB_STEP_SUMMARY
+          echo "**Threads:** ${{ github.event.inputs.threads || '10' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📥 الصور محفوظة في Artifacts" >> $GITHUB_STEP_SUMMARY
+      
+      - name: 📤 Upload Screenshots as Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gowitness-screenshots-${{ github.run_number }}
+          path: screenshots/*.png
+          if-no-files-found: warn
+          retention-days: 30
+      
+      - name: 📤 Upload Database (Optional)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gowitness-database-${{ github.run_number }}
+          path: gowitness.sqlite3
+          if-no-files-found: ignore
+          retention-days: 7
