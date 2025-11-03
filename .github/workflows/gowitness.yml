@@ -54,20 +54,27 @@ jobs:
         run: |
           export PATH=$PATH:$(go env GOPATH)/bin
           
-          # إنشاء مجلد للصور
-          mkdir -p screenshots
-          
-          # تشغيل Gowitness
+          # تشغيل Gowitness مع كتابة في database
           gowitness scan file \
             -f "${{ github.event.inputs.urls_file || 'urls.txt' }}" \
-            --screenshot-path screenshots \
+            --write-db \
             --threads ${{ github.event.inputs.threads || '10' }} \
             --delay ${{ github.event.inputs.delay || '3' }} \
-            --timeout ${{ github.event.inputs.timeout || '30' }} \
+            --timeout ${{ github.event.inputs.timeout || '30' }}
           
           echo "✅ تم الانتهاء من التصوير"
-          echo "📊 عدد الصور:"
-          ls -1 screenshots/*.png 2>/dev/null | wc -l || echo "0"
+          
+          # التحقق من وجود مجلد screenshots
+          if [ -d "screenshots" ]; then
+            echo "✅ مجلد screenshots موجود"
+            echo "📊 عدد الصور: $(ls -1 screenshots/*.png 2>/dev/null | wc -l)"
+            echo "📸 محتويات المجلد:"
+            ls -lh screenshots/
+          else
+            echo "❌ مجلد screenshots مش موجود!"
+            echo "📂 المجلدات الموجودة:"
+            ls -la
+          fi
       
       - name: 📋 Generate Summary Report
         run: |
