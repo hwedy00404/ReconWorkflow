@@ -64,16 +64,26 @@ jobs:
           gowitness scan file \
             -f "${{ github.event.inputs.urls_file || 'urls.txt' }}" \
             --write-db \
+            --screenshot-format png \
             --threads ${{ github.event.inputs.threads || '10' }} \
             --delay ${{ github.event.inputs.delay || '3' }} \
             --timeout ${{ github.event.inputs.timeout || '30' }}
           
           echo "✅ تم الانتهاء من التصوير"
           
-          # التحقق من وجود مجلد screenshots
+          # التحقق من وجود مجلد screenshots وعد الصور
           if [ -d "screenshots" ]; then
             echo "✅ مجلد screenshots موجود"
-            echo "📊 عدد الصور: $(ls -1 screenshots/*.png 2>/dev/null | wc -l)"
+            # عد كل أنواع الصور
+            PNG_COUNT=$(ls -1 screenshots/*.png 2>/dev/null | wc -l || echo 0)
+            JPEG_COUNT=$(ls -1 screenshots/*.jpeg 2>/dev/null | wc -l || echo 0)
+            JPG_COUNT=$(ls -1 screenshots/*.jpg 2>/dev/null | wc -l || echo 0)
+            TOTAL=$((PNG_COUNT + JPEG_COUNT + JPG_COUNT))
+            echo "📊 إجمالي الصور: $TOTAL"
+            echo "   - PNG: $PNG_COUNT"
+            echo "   - JPEG: $JPEG_COUNT"
+            echo "   - JPG: $JPG_COUNT"
+            echo ""
             echo "📸 محتويات المجلد:"
             ls -lh screenshots/
           else
@@ -84,21 +94,36 @@ jobs:
       
       - name: 📋 Generate Summary Report
         run: |
+          # حساب عدد الصور من كل نوع
+          PNG_COUNT=$(ls -1 screenshots/*.png 2>/dev/null | wc -l || echo 0)
+          JPEG_COUNT=$(ls -1 screenshots/*.jpeg 2>/dev/null | wc -l || echo 0)
+          JPG_COUNT=$(ls -1 screenshots/*.jpg 2>/dev/null | wc -l || echo 0)
+          TOTAL=$((PNG_COUNT + JPEG_COUNT + JPG_COUNT))
+          
           echo "# 📸 نتائج المسح" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**الملف المستخدم:** \`${{ github.event.inputs.urls_file || 'urls.txt' }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**عدد الـ URLs:** $(wc -l < ${{ github.event.inputs.urls_file || 'urls.txt' }})" >> $GITHUB_STEP_SUMMARY
-          echo "**عدد الصور:** $(ls -1 screenshots/*.png 2>/dev/null | wc -l || echo 0)" >> $GITHUB_STEP_SUMMARY
+          echo "**إجمالي الصور:** $TOTAL" >> $GITHUB_STEP_SUMMARY
+          echo "  - 🟦 PNG: $PNG_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "  - 🟨 JPEG: $JPEG_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "  - 🟧 JPG: $JPG_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "**Threads:** ${{ github.event.inputs.threads || '10' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Delay:** ${{ github.event.inputs.delay || '3' }}s" >> $GITHUB_STEP_SUMMARY
+          echo "**Timeout:** ${{ github.event.inputs.timeout || '30' }}s" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## 📥 الصور محفوظة في Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "نزّل الصور من قسم **Artifacts** في أسفل الصفحة" >> $GITHUB_STEP_SUMMARY
       
       - name: 📤 Upload Screenshots as Artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gowitness-screenshots-${{ github.run_number }}
-          path: screenshots/*.png
+          path: |
+            screenshots/*.png
+            screenshots/*.jpg
+            screenshots/*.jpeg
           if-no-files-found: warn
           retention-days: 30
       
