@@ -159,24 +159,20 @@ jobs:
           fi
           
           # إنشاء الرسالة
-          MESSAGE="🤖 *Gowitness Workflow*
-          
-${STATUS_EMOJI} *الحالة:* ${STATUS_TEXT}
-
-📊 *الإحصائيات:*
-• الملف: \`${{ github.event.inputs.urls_file || 'urls.txt' }}\`
-• عدد URLs: ${URLS_COUNT}
-• الصور الملتقطة: ${TOTAL}
-  - PNG: ${PNG_COUNT}
-  - JPEG: ${JPEG_COUNT}
-  - JPG: ${JPG_COUNT}
-
-⚙️ *الإعدادات:*
-• Threads: ${{ github.event.inputs.threads || '10' }}
-• Delay: ${{ github.event.inputs.delay || '3' }}s
-• Timeout: ${{ github.event.inputs.timeout || '30' }}s
-
-🔗 [عرض Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          MESSAGE="🤖 *Gowitness Workflow*%0A%0A"
+          MESSAGE+="${STATUS_EMOJI} *الحالة:* ${STATUS_TEXT}%0A%0A"
+          MESSAGE+="📊 *الإحصائيات:*%0A"
+          MESSAGE+="• الملف: \`${{ github.event.inputs.urls_file || 'urls.txt' }}\`%0A"
+          MESSAGE+="• عدد URLs: ${URLS_COUNT}%0A"
+          MESSAGE+="• الصور الملتقطة: ${TOTAL}%0A"
+          MESSAGE+="  - PNG: ${PNG_COUNT}%0A"
+          MESSAGE+="  - JPEG: ${JPEG_COUNT}%0A"
+          MESSAGE+="  - JPG: ${JPG_COUNT}%0A%0A"
+          MESSAGE+="⚙️ *الإعدادات:*%0A"
+          MESSAGE+="• Threads: ${{ github.event.inputs.threads || '10' }}%0A"
+          MESSAGE+="• Delay: ${{ github.event.inputs.delay || '3' }}s%0A"
+          MESSAGE+="• Timeout: ${{ github.event.inputs.timeout || '30' }}s%0A%0A"
+          MESSAGE+="🔗 [عرض Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           
           # إرسال الإشعار
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
