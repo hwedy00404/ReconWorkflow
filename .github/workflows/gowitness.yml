@@ -135,3 +135,13 @@ jobs:
           path: gowitness.sqlite3
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Send Telegram notification
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            -d text="$MESSAGE" \
+            -d parse_mode="Markdown"
