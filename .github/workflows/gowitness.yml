@@ -136,12 +136,51 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Send Telegram notification
+      - name: 📱 Send Telegram Notification
+        if: always()
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
-            -d chat_id="$CHAT_ID" \
-            -d text="$MESSAGE" \
-            -d parse_mode="Markdown"
+          # حساب عدد الصور
+          PNG_COUNT=$(ls -1 screenshots/*.png 2>/dev/null | wc -l || echo 0)
+          JPEG_COUNT=$(ls -1 screenshots/*.jpeg 2>/dev/null | wc -l || echo 0)
+          JPG_COUNT=$(ls -1 screenshots/*.jpg 2>/dev/null | wc -l || echo 0)
+          TOTAL=$((PNG_COUNT + JPEG_COUNT + JPG_COUNT))
+          URLS_COUNT=$(wc -l < ${{ github.event.inputs.urls_file || 'urls.txt' }})
+          
+          # تحديد حالة الـ Workflow
+          if [ "${{ job.status }}" == "success" ]; then
+            STATUS_EMOJI="✅"
+            STATUS_TEXT="نجح"
+          else
+            STATUS_EMOJI="❌"
+            STATUS_TEXT="فشل"
+          fi
+          
+          # إنشاء الرسالة
+          MESSAGE="🤖 *Gowitness Workflow*
+          
+${STATUS_EMOJI} *الحالة:* ${STATUS_TEXT}
+
+📊 *الإحصائيات:*
+• الملف: \`${{ github.event.inputs.urls_file || 'urls.txt' }}\`
+• عدد URLs: ${URLS_COUNT}
+• الصور الملتقطة: ${TOTAL}
+  - PNG: ${PNG_COUNT}
+  - JPEG: ${JPEG_COUNT}
+  - JPG: ${JPG_COUNT}
+
+⚙️ *الإعدادات:*
+• Threads: ${{ github.event.inputs.threads || '10' }}
+• Delay: ${{ github.event.inputs.delay || '3' }}s
+• Timeout: ${{ github.event.inputs.timeout || '30' }}s
+
+🔗 [عرض Workflow](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          
+          # إرسال الإشعار
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -d chat_id="${CHAT_ID}" \
+            -d text="${MESSAGE}" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview=true
