@@ -211,14 +211,17 @@ jobs:
           echo "🔍 Checking for large files..."
           for file in *.txt; do
             if [ -f "$file" ]; then
-              SIZE=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
-              # If the file is greater than 50 MB (50000000 bytes)
-              if [ $SIZE -gt 50000000 ]; then
-                echo "📦 Compressing $file (Size: $(($SIZE / 1048576)) MB)"
+              # Use stat -c%s for Linux (Ubuntu)
+              SIZE=$(stat -c%s "$file" 2>/dev/null || echo 0)
+              SIZE_MB=$(($SIZE / 1048576))
+              
+              # If the file is greater than 50 MB (52428800 bytes)
+              if [ $SIZE -gt 52428800 ]; then
+                echo "📦 Compressing $file (Size: ${SIZE_MB} MB)"
                 gzip -9 "$file"
                 echo "✅ Created ${file}.gz"
               else
-                echo "✓ $file is small enough ($(($SIZE / 1048576)) MB)"
+                echo "✓ $file is small enough (${SIZE_MB} MB)"
               fi
             fi
           done
