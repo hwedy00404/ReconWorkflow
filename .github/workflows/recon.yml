@@ -227,10 +227,13 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          if *.txt; then
+          
+          if ls *.txt 1> /dev/null 2>&1; then
             git add -A '*.txt' || true
-          else *.txt.gz; then
+          elif ls *.txt.gz 1> /dev/null 2>&1; then
             git add -A '*.txt.gz' || true
+          fi
+          
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
