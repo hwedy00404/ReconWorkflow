@@ -212,7 +212,7 @@ jobs:
           for file in *.txt; do
             if [ -f "$file" ]; then
               SIZE=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
-              # إذا الملف أكبر من 50 ميجابايت (50000000 بايت)
+              # If the file is greater than 50 MB (50000000 bytes)
               if [ $SIZE -gt 50000000 ]; then
                 echo "📦 Compressing $file (Size: $(($SIZE / 1048576)) MB)"
                 gzip -9 "$file"
@@ -227,7 +227,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add *.txt *.txt.gz || true
+          git add '*.txt' '*.txt.gz' || true
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
