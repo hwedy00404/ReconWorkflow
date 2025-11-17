@@ -1,5 +1,4 @@
 name: Recon Tool Selector
-
 on:
   workflow_dispatch:
     inputs:
