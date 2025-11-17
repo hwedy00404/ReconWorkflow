@@ -1,28 +1,257 @@
-name: Upload Missing Files
+name: Recon Tool Selector
 
 on:
   workflow_dispatch:
+    inputs:
+      tool:
+        type: choice
+        description: 'Select the tool to run'
+        required: true
+        options:
+          - subfinder
+          - httpx
+          - gau
+          - nuclei
+      domain:
+        description: 'Target domain to scan (used if no input_list provided)'
+        required: false
+        default: 'example.com'
+      input_list:
+        description: 'Paste the content of your domains/subdomains file here (multiline, each on a new line). This will be used as input file.'
+        required: false
+        type: string
+      input_file_path:
+        description: 'Path to uploaded file in repo (e.g., inputs/domains.txt). Leave empty if using input_list or domain.'
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
-  upload:
+  run-selected-tool:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      
-      - name: Check for .gz files in previous runs
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+            ~/go/bin
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.mod', '**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install tools
         run: |
-          echo "Checking for compressed files..."
-          ls -lh *.gz 2>/dev/null || echo "No .gz files found locally"
-      
-      - name: Add and commit any missing files
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          go install github.com/lc/gau/v2/cmd/gau@latest
+
+      - name: Create subfinder config with secrets
+        run: |
+          mkdir -p ~/.config/subfinder
+          CONFIG_FILE=~/.config/subfinder/provider-config.yaml
+          echo "# Subfinder provider config with API keys" > $CONFIG_FILE
+          
+          if [ -n "${{ secrets.VIRUSTOTAL_API_KEY }}" ]; then
+            echo "virustotal:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.VIRUSTOTAL_API_KEY }}" >> $CONFIG_FILE
+          fi
+          
+          if [ -n "${{ secrets.API_KEY_GITHUB }}" ]; then
+            echo "github:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.API_KEY_GITHUB }}" >> $CONFIG_FILE
+          fi
+
+          if [ -n "${{ secrets.DSNDUMPSTER_API_KEY }}" ]; then
+            echo "dnsdumpster:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.DSNDUMPSTER_API_KEY }}" >> $CONFIG_FILE
+          fi
+
+          if [ -n "${{ secrets.SECURITYTRAILS_API_KEY }}" ]; then
+            echo "securitytrails:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.SECURITYTRAILS_API_KEY }}" >> $CONFIG_FILE
+          fi
+
+          if [ -n "${{ secrets.SHODAN_API_KEY }}" ]; then
+            echo "shodan:" >> $CONFIG_FILE
+            echo "  - ${{ secrets.SHODAN_API_KEY }}" >> $CONFIG_FILE
+          fi
+          
+          echo "alienvault: []" >> $CONFIG_FILE
+          echo "bevigil: []" >> $CONFIG_FILE
+          
+          echo "Config file created at $CONFIG_FILE"
+
+      - name: Prepare input file
+        run: |
+          # Priority: 1. Uploaded file, 2. Pasted content, 3. Single domain
+          if [ -n "${{ inputs.input_file_path }}" ] && [ -f "${{ inputs.input_file_path }}" ]; then
+            cp "${{ inputs.input_file_path }}" input-domains.txt
+            echo "✅ Using uploaded file: ${{ inputs.input_file_path }}"
+            INPUT_SOURCE="uploaded file"
+          elif [ -n "${{ inputs.input_list }}" ]; then
+            echo "${{ inputs.input_list }}" > input-domains.txt
+            echo "✅ Using pasted input list"
+            INPUT_SOURCE="pasted list"
+          else
+            echo "✅ No file or list provided, will use single domain: ${{ inputs.domain }}"
+            INPUT_SOURCE="single domain"
+          fi
+          echo "INPUT_SOURCE=$INPUT_SOURCE" >> $GITHUB_ENV
+
+      - name: Debug input file content
+        if: inputs.input_file_path != '' || inputs.input_list != ''
+        run: |
+          if [ -f input-domains.txt ]; then
+            echo "📄 Content of input-domains.txt:"
+            cat input-domains.txt
+            echo ""
+            echo "📊 Total lines: $(wc -l < input-domains.txt)"
+          fi
+
+      - name: Run subfinder
+        if: inputs.tool == 'subfinder'
+        run: |
+          mkdir subfinder-workspace
+          cd subfinder-workspace
+          if [ -f ../input-domains.txt ]; then
+            cp ../input-domains.txt domains.txt
+            subfinder -dL domains.txt -silent -t 100 -o subdomains.txt
+          else
+            subfinder -d "${{ inputs.domain }}" -silent -o subdomains.txt
+          fi
+          SUBDOMAINS_COUNT=$(wc -l < subdomains.txt)
+          echo "Found $SUBDOMAINS_COUNT subdomains from $INPUT_SOURCE"
+          echo "MESSAGE=✅ Subfinder completed from $INPUT_SOURCE: Found $SUBDOMAINS_COUNT subdomains." >> $GITHUB_ENV
+          mv subdomains.txt ..
+          cd ..
+          rm -rf subfinder-workspace
+
+      - name: Run httpx
+        if: inputs.tool == 'httpx'
+        run: |
+          if [ -f input-domains.txt ]; then
+            INPUT_FILE=input-domains.txt
+          elif [ -f subdomains.txt ]; then
+            INPUT_FILE=subdomains.txt
+          else
+            echo "❌ No input file or subdomains.txt found! Provide input_list or run subfinder first."
+            exit 1
+          fi
+          mkdir httpx-workspace
+          cd httpx-workspace
+          cp ../$INPUT_FILE .
+          httpx -l $INPUT_FILE -silent -t 200 -o live-hosts.txt
+          LIVE_COUNT=$(wc -l < live-hosts.txt)
+          echo "Found $LIVE_COUNT live hosts"
+          echo "MESSAGE=✅ Httpx completed from $INPUT_SOURCE: Found $LIVE_COUNT live hosts." >> $GITHUB_ENV
+          mv live-hosts.txt ..
+          cd ..
+          rm -rf httpx-workspace
+
+      - name: Run gau
+        if: inputs.tool == 'gau'
+        run: |
+          if [ -f input-domains.txt ]; then
+            INPUT_FILE=input-domains.txt
+          elif [ -f live-hosts.txt ]; then
+            INPUT_FILE=live-hosts.txt
+          else
+            echo "❌ No input file or live-hosts.txt found! Provide input_list or run httpx first."
+            exit 1
+          fi
+          mkdir gau-workspace
+          cd gau-workspace
+          cp ../$INPUT_FILE .
+          cat $INPUT_FILE | gau > archived-urls.txt
+          ARCHIVED_COUNT=$(wc -l < archived-urls.txt)
+          echo "Found $ARCHIVED_COUNT archived URLs"
+          echo "MESSAGE=✅ gau completed from $INPUT_SOURCE: Found $ARCHIVED_COUNT archived URLs." >> $GITHUB_ENV
+          mv archived-urls.txt ..
+          cd ..
+          rm -rf gau-workspace
+
+      - name: Run nuclei
+        if: inputs.tool == 'nuclei'
+        run: |
+          if [ -f input-domains.txt ]; then
+            INPUT_FILE=input-domains.txt
+          elif [ -f live-hosts.txt ]; then
+            INPUT_FILE=live-hosts.txt
+          else
+            echo "❌ No input file or live-hosts.txt found! Provide input_list or run httpx first."
+            exit 1
+          fi
+          mkdir nuclei-workspace
+          cd nuclei-workspace
+          cp ../$INPUT_FILE .
+          nuclei -update-templates
+          nuclei -l $INPUT_FILE -silent -o vulnerabilities.txt
+          VULNS_COUNT=$(wc -l < vulnerabilities.txt)
+          echo "Scan completed, found $VULNS_COUNT potential vulnerabilities"
+          echo "MESSAGE=✅ Nuclei completed from $INPUT_SOURCE: Found $VULNS_COUNT potential vulnerabilities." >> $GITHUB_ENV
+          mv vulnerabilities.txt ..
+          cd ..
+          rm -rf nuclei-workspace
+
+      - name: Compress large files
+        run: |
+          echo "🔍 Checking for large files..."
+          for file in *.txt; do
+            if [ -f "$file" ]; then
+              # Use stat -c%s for Linux (Ubuntu)
+              SIZE=$(stat -c%s "$file" 2>/dev/null || echo 0)
+              SIZE_MB=$(($SIZE / 1048576))
+              
+              # If the file is greater than 50 MB (52428800 bytes)
+              if [ $SIZE -gt 52428800 ]; then
+                echo "📦 Compressing $file (Size: ${SIZE_MB} MB)"
+                gzip -9 "$file"
+                echo "✅ Created ${file}.gz"
+              else
+                echo "✓ $file is small enough (${SIZE_MB} MB)"
+              fi
+            fi
+          done
+
+      - name: Commit results
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A *.txt *.txt.gz 2>/dev/null || true
-          if ! git diff --staged --quiet; then
-            git commit -m "📦 Upload missing compressed files"
-            git push origin main
+          
+          # Add both .txt and .txt.gz files
+          git add *.txt 2>/dev/null || true
+          git add *.txt.gz 2>/dev/null || true
+          
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
           else
-            echo "No new files to upload"
+            git commit -m "Update results from ${{ inputs.tool }} - Source: $INPUT_SOURCE"
+            git push origin main
           fi
+
+      - name: Send Telegram notification
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            -d text="$MESSAGE" \
+            -d parse_mode="Markdown"
+
+      - name: Cleanup
+        if: always()
+        run: rm -f *.txt || true
