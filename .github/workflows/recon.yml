@@ -206,17 +206,34 @@ jobs:
           cd ..
           rm -rf nuclei-workspace
 
-      - name: Commit results
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add *.txt || true
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update results from ${{ inputs.tool }} - Source: $INPUT_SOURCE"
-            git push origin main
-          fi
+      - name: Compress large files
+  run: |
+    echo "🔍 Checking for large files..."
+    for file in *.txt; do
+      if [ -f "$file" ]; then
+        SIZE=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
+        # If the file is larger than 50 MB (50,000,000 bytes)
+        if [ $SIZE -gt 50000000 ]; then
+          echo "📦 Compressing $file (Size: $(($SIZE / 1048576)) MB)"
+          gzip -9 "$file"
+          echo "✅ Created ${file}.gz"
+        else
+          echo "✓ $file is small enough ($(($SIZE / 1048576)) MB)"
+        fi
+      fi
+    done
+
+    - name: Commit results
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add *.txt *.txt.gz || true
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Update results from ${{ inputs.tool }} - Source: $INPUT_SOURCE"
+          git push origin main
+        fi
 
       - name: Send Telegram notification
         env:
