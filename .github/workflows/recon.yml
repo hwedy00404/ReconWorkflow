@@ -226,6 +226,16 @@ jobs:
             fi
           done
 
+      - name: Upload results as artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: ${{ inputs.tool }}-results
+          path: |
+            *.txt
+            *.txt.gz
+          retention-days: 7
+      
       - name: Commit results
         run: |
           git config --global user.name "github-actions[bot]"
