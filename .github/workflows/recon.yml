@@ -231,10 +231,8 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          if ls *.txt 1> /dev/null 2>&1; then
-            git add -A '*.txt' || true
-          elif ls *.txt.gz 1> /dev/null 2>&1; then
-            git add -A '*.txt.gz' || true
+          # Add both .txt and .txt.gz files
+          git add -A *.txt *.txt.gz 2>/dev/null || true
           fi
           
           if git diff --staged --quiet; then
