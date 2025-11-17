@@ -1,8 +1,0 @@
-https://h22228.www2.it.hpe.com
-https://proxy-officeconnect.ext.hpe.com
-https://quoteservices.hpe.com
-https://connect.hpe.com
-https://spinnaker-prod-ca-central-1.common.cloud.hpe.com
-https://apiportal.hpefs.technomics-itg.east.int.hpe.com
-https://gms-mc-test-customer0.ivm.compliance.greenlake.hpe.com
-http://beta4.infosight.hpe.com
